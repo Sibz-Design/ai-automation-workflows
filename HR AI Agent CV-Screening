@@ -1,0 +1,594 @@
+{
+  "name": "HR AI Agent CV-Screening",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {},
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        112
+      ],
+      "id": "8b7c0b8b-7db6-40b9-bd4e-4264380a0b42",
+      "name": "Gmail Trigger"
+    },
+    {
+      "parameters": {
+        "inputText": "={{ $json.text }}",
+        "categories": {
+          "categories": [
+            {
+              "category": "Apply",
+              "description": "Contains a job application from a candidate seeking a position at our organization"
+            },
+            {
+              "category": "Doesn't apply",
+              "description": "The candidate is not a job application"
+            }
+          ]
+        },
+        "options": {
+          "systemPromptTemplate": "Please classify the text provided by the user into one of the following categories: {categories}, and use the provided formatting instructions below. Don't explain, and only output the json."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.textClassifier",
+      "typeVersion": 1,
+      "position": [
+        448,
+        112
+      ],
+      "id": "53c195cf-f0dd-44d4-8683-d7d7f5815897",
+      "name": "Text Classifier"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        384,
+        304
+      ],
+      "id": "1ebe207c-1134-4333-ae67-219d5566d5ca",
+      "name": "OpenAI Chat Model"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        848,
+        128
+      ],
+      "id": "8cb99c9a-3a09-455c-a9f9-35298e145e22",
+      "name": "No Operation, do nothing"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "f33fdcc7-8cbd-4407-a99a-6f43b2296be2",
+                    "leftValue": "attachment_0",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "exists",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "2595098f-28e5-4e77-b960-0c64e24a99ba",
+                    "leftValue": "attachment_0",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "string",
+                      "operation": "exists",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "allMatchingOutputs": true
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        144,
+        608
+      ],
+      "id": "2e57a4bb-8601-4e94-a390-b29ee1fa6572",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "attachment_0",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        528,
+        720
+      ],
+      "id": "ac661bf4-7802-4944-b67b-37aa9c581f74",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "inputDataFieldName": "=attachment_0",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_DRIVE_FOLDER_ID",
+          "mode": "list",
+          "cachedResultName": "CV Screening ",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/REPLACE_WITH_YOUR_DRIVE_FOLDER_ID"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        496,
+        528
+      ],
+      "id": "f0e155a3-6189-469b-a100-2e5c577ec4bd",
+      "name": "Google Drive"
+    },
+    {
+      "parameters": {
+        "operation": "share",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "permissionsUi": {
+          "permissionsValues": {
+            "role": "reader",
+            "type": "anyone"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        688,
+        544
+      ],
+      "id": "00a57c37-e688-4d1c-9003-82fc4f8ca464",
+      "name": "Google Drive1"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        928,
+        672
+      ],
+      "id": "899aaca0-78b2-471c-8d58-0eb793dce6a9",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analyze the current information from the received candidate and score between 0 to 10 the said candidate, 0 meaning not a good fit for the position, 10 being outstanding for the job.\n\nJob Description: Business Development Representative (BDR) Role for Lead Gen Man | Remote/Hybrid\n\nAbout Us  \nAt Lead Gen Man, we don’t do boring B2B marketing. We’ve redefined what lead generation means with B-Skool — the no-BS, all-results system that’s helped 1,500+ members generate over 17,000 sales. From DFY outreach systems to expert coaching and plug-and-play templates, we’re all about helping people close deals faster.\n\nForget lectures and outdated playbooks — we move fast, test faster, and build lead machines that never stop.\n\nRole Overview  \nWe’re looking for a Sales Development Representative (SDR) who’s hungry to learn, focused on outcomes, and ready to drive pipeline growth. You’ll lead with research, outreach, and qualification to keep discovery calls flowing and calendars full.\n\nThis role is about momentum and execution — not checking boxes.\n\nWhat You’ll Be Doing  \n- Research and identify ideal prospects using platforms like Clay, Apollo, and LinkedIn  \n- Launch personalized, high-impact outreach via email, DMs, and phone  \n- Schedule discovery calls for the founder and sales team  \n- Maintain clean, accurate CRM records and activity tracking  \n\nWhat You Bring  \n- 1+ year of B2B sales experience (SaaS, AI, or agency background preferred)  \n- Strong verbal and written communication skills  \n- Comfortable navigating sales tools and CRM systems  \n- Solid understanding of enterprise buying behavior and automation tools  \n- Degree optional — performance matters more than paper  \n\nWhat We Offer  \n- Base salary: $100K–$150K plus commission  \n- Professional development budget  \n- Remote-first setup with flexible work hours  \n- Direct access to founder Manthan and a sharp, growth-minded team  \n\nSee the extracted PDF information: {{ $json.text }}\n\nProvide some key insight on why this candidate is a good fit for the position as well",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a helpful HR assistant. Your goal is to analyze the CV of the candidate and see if the candidate is a good candidate for the position."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.8,
+      "position": [
+        272,
+        1008
+      ],
+      "id": "b9e4ae43-3617-4107-8b15-9b67350902ac",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        1232
+      ],
+      "id": "ed5da1f1-b8c3-4058-a82f-03c32f7ace6c",
+      "name": "OpenAI Chat Model1"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n \"candidate\": {\n   \"first_name\": \"string\",\n   \"last_name\":\"string\",\n   \"email\": \"string\",\n   \"location\": \"string\",\n   \"phone\": \"string\"\n },\n \"summary\": {\n   \"years_experience\": \"number\",\n   \"current_role\": \"string\", \n   \"key_achievements\": [\"string\"],\n   \"technical_skills\": [\"string\"]\n },\n \"fit_score\": {\n   \"overall\": \"number\",\n   \"breakdown\": {\n     \"experience\": \"number\",\n     \"technical_skills\": \"number\", \n     \"achievements\": \"number\",\n     \"education\": \"number\"\n   },\n   \"reasoning\": [\"string\"]\n }\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        448,
+        1232
+      ],
+      "id": "3c9ed2da-e074-42bd-a243-1546179a5631",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1eRNCbM7F5b-o5AmP9XMpSRIKFQ_Cks4xZO8EowLLJs0",
+          "mode": "list",
+          "cachedResultName": "HR Screening n8n lecture",
+          "cachedResultUrl": " REPLACE_WITH_YOUR_URL "
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": " REPLACE_WITH_YOUR_URL "
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "First Name": "={{ $json.output.candidate.first_name }}",
+            "Last Name": "={{ $json.output.candidate.last_name }}",
+            "Email": "={{ $json.output.candidate.email }}",
+            "Email content": "={{ $('Gmail Trigger').item.json.text }}",
+            "Summary": "={{ $json.output.summary.years_experience }} of {{ $json.output.summary.current_role }}",
+            "CV": "={{ $('Google Drive').item.json.webViewLink }}",
+            "Scoring": "=Overall Score: {{ $json.output.fit_score.overall }}\nExperience Score: {{ $json.output.fit_score.breakdown.experience }}\nTechnical Score: {{ $json.output.fit_score.breakdown.technical_skills }}\nAchievements Score: {{ $json.output.fit_score.breakdown.achievements }}\nEducation Score: {{ $json.output.fit_score.breakdown.education }}",
+            "Quick Read": "={{ $json.output.fit_score.reasoning[0] }} {{ $json.output.fit_score.reasoning[1] }} {{ $json.output.fit_score.reasoning[2] }} {{ $json.output.fit_score.reasoning[3] }} {{ $json.output.fit_score.reasoning[4] }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "First Name",
+              "displayName": "First Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Last Name",
+              "displayName": "Last Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email content",
+              "displayName": "Email content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Summary",
+              "displayName": "Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CV",
+              "displayName": "CV",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Scoring",
+              "displayName": "Scoring",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Quick Read",
+              "displayName": "Quick Read",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        624,
+        1008
+      ],
+      "id": "199c8f81-35a0-438d-aa8b-63e5715b9f19",
+      "name": "Google Sheets"
+    },
+    {
+      "parameters": {
+        "content": "Trigger when new CV received in our email",
+        "height": 460,
+        "width": 1140
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -32,
+        0
+      ],
+      "typeVersion": 1,
+      "id": "11f88267-2c18-4442-85aa-bc6981897975",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "Extract data from the CV",
+        "height": 460,
+        "width": 1140,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -16,
+        480
+      ],
+      "typeVersion": 1,
+      "id": "b93e252a-e441-422e-a116-a0624f249f4c",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "Qualify the Individual",
+        "height": 420,
+        "width": 860,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -16,
+        960
+      ],
+      "typeVersion": 1,
+      "id": "10bad39d-6024-4a49-8d66-c0e608e730fb",
+      "name": "Sticky Note2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Text Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Text Classifier",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text Classifier": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Google Drive1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Google Drive1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "b4665838-f095-46d2-bb15-66376bdedbd3",
+  "meta": {
+    "instanceId": "682c9f7671b860f88c60106927f6e93b525aa4b8eb25cbd421c65b3e3984befe"
+  },
+  "id": "LQmbd5hgMMWLgvdK",
+  "tags": []
+}
