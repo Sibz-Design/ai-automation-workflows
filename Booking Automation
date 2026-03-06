@@ -1,0 +1,1245 @@
+{
+  "name": "Booking Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "name": "Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -432,
+        -64
+      ],
+      "id": "e6d295cf-9c98-447b-a4ff-00a1d440c285"
+    },
+    {
+      "parameters": {
+        "resource": "__CUSTOM_API_CALL__"
+      },
+      "name": "Get Calendar Free/Busy",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        -64
+      ],
+      "id": "30128f1d-5194-41b7-b5b4-35313166c5df"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Business Configuration\nconst businessHours = {\n  start: 9,              // 9 AM\n  end: 17,               // 5 PM\n  slotDuration: 60,      // minutes per appointment\n  daysAhead: 14,         // how far to book in advance\n  workDays: [1, 2, 3, 4, 5, 6]  // Mon-Sat (0=Sunday, 6=Saturday)\n};\n\n// Timezone: Africa/Johannesburg (GMT+2)\nconst { DateTime } = require('luxon');\nconst timezone = 'Africa/Johannesburg';\n\n// Get busy times from calendar\nconst busyTimes = $input.item.json.calendars?.primary?.busy || [];\n\n// Generate all possible slots\nconst slots = [];\nconst now = DateTime.now().setZone(timezone);\n\nfor (let day = 0; day <= businessHours.daysAhead; day++) {\n  const date = now.plus({ days: day });\n  \n  // Skip if not a working day\n  if (!businessHours.workDays.includes(date.weekday % 7)) continue;\n  \n  // Generate hourly slots for this day\n  for (let hour = businessHours.start; hour < businessHours.end; hour++) {\n    const slotStart = date.set({ hour, minute: 0, second: 0, millisecond: 0 });\n    const slotEnd = slotStart.plus({ minutes: businessHours.slotDuration });\n    \n    // Skip past times (with 2 hour buffer)\n    if (slotStart < now.plus({ hours: 2 })) continue;\n    \n    // Check if slot conflicts with busy times\n    const isAvailable = !busyTimes.some(busy => {\n      const busyStart = DateTime.fromISO(busy.start, { zone: timezone });\n      const busyEnd = DateTime.fromISO(busy.end, { zone: timezone });\n      \n      // Check for overlap\n      return slotStart < busyEnd && slotEnd > busyStart;\n    });\n    \n    if (isAvailable) {\n      slots.push({\n        datetime: slotStart.toISO(),\n        display: slotStart.toFormat('EEE, dd MMM yyyy - HH:mm'),\n        date: slotStart.toFormat('yyyy-MM-dd'),\n        time: slotStart.toFormat('HH:mm'),\n        dayOfWeek: slotStart.toFormat('EEEE')\n      });\n    }\n  }\n}\n\nreturn slots.map(slot => ({ json: slot }));"
+      },
+      "name": "Generate Available Slots",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16,
+        -64
+      ],
+      "id": "869dbfd4-f7a2-484f-a3c4-675e342fb95d"
+    },
+    {
+      "parameters": {
+        "operation": "clear",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Availability Spreadsheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Available_Slots"
+        }
+      },
+      "name": "Clear Old Slots",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        -64
+      ],
+      "id": "6936d8c1-ad97-4f69-84da-6c159b7f0c9c"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Availability Spreadsheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Available_Slots"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "datetime": "={{ $json.datetime }}",
+            "display": "={{ $json.display }}",
+            "date": "={{ $json.date }}",
+            "time": "={{ $json.time }}",
+            "dayOfWeek": "={{ $json.dayOfWeek }}"
+          }
+        },
+        "options": {}
+      },
+      "name": "Write Available Slots",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        448,
+        -64
+      ],
+      "id": "09674772-deca-4175-834d-a88bdd2924af"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_FORM_RESPONSES_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Form Responses"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Form Responses 1"
+        },
+        "options": {}
+      },
+      "id": "76954937-8028-4f3d-baf2-ad3aa1f96b26",
+      "name": "When Form Submitted",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        -400,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { DateTime } = require('luxon');\n\n// Get form data - adjust field names to match YOUR Google Form\nconst name = $input.item.json['Name'] || $input.item.json['Full Name'];\nconst phone = ($input.item.json['Phone Number'] || $input.item.json['WhatsApp Number'] || '').replace(/\\s/g, '');\nconst service = $input.item.json['Service Type'] || $input.item.json['Service'];\nconst slotText = $input.item.json['Selected Time Slot'] || $input.item.json['Appointment Time'];\nconst timestamp = $input.item.json['Timestamp'] || new Date().toISOString();\n\n// Ensure phone has country code (+27 for South Africa)\nlet formattedPhone = phone;\nif (!phone.startsWith('+')) {\n  formattedPhone = phone.startsWith('0') ? '+27' + phone.substring(1) : '+27' + phone;\n}\n\n// Parse the selected time slot\n// Expected format: \"Thu, 16 Oct 2025 - 10:00\"\nconst match = slotText.match(/(\\d{2} \\w{3} \\d{4}).*?(\\d{2}:\\d{2})/);\n\nif (!match) {\n  throw new Error('Invalid slot format: ' + slotText + '. Expected format like \"Thu, 16 Oct 2025 - 10:00\"');\n}\n\nconst dateStr = match[1]; // \"16 Oct 2025\"\nconst timeStr = match[2]; // \"10:00\"\n\n// Parse into DateTime object (Cape Town timezone)\nconst appointmentDT = DateTime.fromFormat(\n  `${dateStr} ${timeStr}`,\n  'dd MMM yyyy HH:mm',\n  { zone: 'Africa/Johannesburg' }\n);\n\nif (!appointmentDT.isValid) {\n  throw new Error('Could not parse date/time: ' + appointmentDT.invalidReason);\n}\n\n// Generate unique booking ID\nconst bookingID = `${DateTime.fromISO(timestamp).toFormat('yyyyMMdd-HHmmss')}-${name.substring(0, 3).toUpperCase()}`;\n\nreturn [{\n  json: {\n    Name: name,\n    Phone: formattedPhone,\n    Service: service,\n    SelectedSlot: slotText,\n    BookingID: bookingID,\n    Status: 'Pending',\n    appointmentISO: appointmentDT.toISO(),\n    appointmentDate: appointmentDT.toFormat('yyyy-MM-dd'),\n    appointmentTime: appointmentDT.toFormat('HH:mm'),\n    appointmentDisplay: appointmentDT.toFormat('EEEE, dd MMMM yyyy \\\\at HH:mm'),\n    CreatedAt: timestamp,\n    Reminder24hSent: false,\n    Reminder2hSent: false,\n    FollowUpSent: false,\n    CalendarEventID: ''\n  }\n}];"
+      },
+      "id": "f9461481-93a0-4fac-a35f-3cde7fd2a873",
+      "name": "Parse Booking Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BOOKINGS_CRM_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Bookings CRM"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Bookings"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "BookingID": "={{ $json.BookingID }}",
+            "Name": "={{ $json.Name }}",
+            "Phone": "={{ $json.Phone }}",
+            "Service": "={{ $json.Service }}",
+            "AppointmentDateTime": "={{ $json.appointmentISO }}",
+            "Status": "={{ $json.Status }}",
+            "CreatedAt": "={{ $json.CreatedAt }}",
+            "CalendarEventID": "={{ $json.CalendarEventID }}",
+            "Reminder24hSent": "={{ $json.Reminder24hSent }}",
+            "Reminder2hSent": "={{ $json.Reminder2hSent }}",
+            "FollowUpSent": "={{ $json.FollowUpSent }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "a3ec9fe4-d6f7-46dc-9cda-ddbc3ed59dfb",
+      "name": "Log to CRM",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "message": "=Hi {{ $json.Name }} 👋\n\nYour {{ $json.Service }} booking for {{ $json.appointmentDisplay }} has been received!\n\nPlease reply:\n✅ to confirm\n❌ to cancel\n🔁 to reschedule\n\nBooking ref: {{ $json.BookingID }}",
+        "options": {}
+      },
+      "id": "2226f1eb-945e-40e2-8a6f-4fba9e72abc4",
+      "name": "Send WhatsApp Confirmation",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        224,
+        240
+      ],
+      "notes": "IMPORTANT: Replace Twilio number with YOUR WhatsApp-enabled Twilio number.\n\nIf using WhatsApp Cloud API instead of Twilio:\n1. Delete this Twilio node\n2. Add HTTP Request node\n3. Use configuration from the guide"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c2d3e4f5-a6b7-8901-cdef-234567890123",
+              "name": "message",
+              "value": "=Booking request sent to {{ $json.Name }}",
+              "type": "string"
+            },
+            {
+              "id": "d3e4f5a6-b7c8-9012-def2-345678901234",
+              "name": "bookingID",
+              "value": "={{ $json.BookingID }}",
+              "type": "string"
+            },
+            {
+              "id": "e4f5a6b7-c8d9-0123-ef23-456789012345",
+              "name": "phone",
+              "value": "={{ $json.Phone }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4615be5d-dcb0-4f54-983d-983e48a71ea3",
+      "name": "Success",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [
+        432,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-reply",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook - WhatsApp Replies",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -704,
+        688
+      ],
+      "id": "3f888a37-11e8-4b5a-88a6-67abe62841d1",
+      "webhookId": "whatsapp-reply-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = ($input.item.json.Body || '').toLowerCase().trim();\nconst from = ($input.item.json.From || '').replace('whatsapp:', '').replace('+', '');\n\nlet action = 'unknown';\n\nif (body.includes('✅') || body.includes('confirm') || body.includes('yes') || body.includes('ok')) {\n  action = 'confirm';\n} else if (body.includes('❌') || body.includes('cancel') || body.includes('no')) {\n  action = 'cancel';\n} else if (body.includes('🔁') || body.includes('reschedule') || body.includes('change')) {\n  action = 'reschedule';\n}\n\nreturn [{\n  json: {\n    action: action,\n    phone: '+' + from,\n    originalMessage: body,\n    receivedAt: new Date().toISOString()\n  }\n}];"
+      },
+      "name": "Parse Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        688
+      ],
+      "id": "5caa4794-4e14-477f-aefe-f911099f6fb7"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BOOKINGS_CRM_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Bookings CRM"
+        }
+      },
+      "name": "Find Pending Booking",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        -256,
+        688
+      ],
+      "id": "15d690ec-40b7-4cd0-ae1c-d327be7490b7"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "condition-action",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "confirm",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If Confirm",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        592
+      ],
+      "id": "2e0cdbc5-dd7d-4fe9-b70d-6cb76bc49e39"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "start": "={{ $json.AppointmentDateTime }}",
+        "end": "={{ DateTime.fromISO($json.AppointmentDateTime).plus({hours: 1}).toISO() }}",
+        "additionalFields": {}
+      },
+      "name": "Create Calendar Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [
+        176,
+        480
+      ],
+      "id": "a8ecee94-10ec-45f1-afdd-f5c7ff37dd45"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BOOKINGS_CRM_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Bookings CRM"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Bookings"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Confirmed",
+            "CalendarEventID": "={{ $json.id }}"
+          }
+        },
+        "options": {}
+      },
+      "name": "Update to Confirmed",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        480
+      ],
+      "id": "674fa2da-5429-47c6-9ebf-6a45b4ff7895"
+    },
+    {
+      "parameters": {
+        "message": "=Perfect! ✅ Your appointment is confirmed.\n\nWe'll send reminders 24h and 2h before.\n\nSee you soon! 🌟",
+        "options": {}
+      },
+      "name": "Send Confirmation",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        624,
+        480
+      ],
+      "id": "3d7c53f9-0b6f-49bd-ae1f-e711e1d9cc9c"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "condition-cancel",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "cancel",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If Cancel",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        784
+      ],
+      "id": "edc3e4c1-bc8f-454f-b53e-46368ab3f183"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BOOKINGS_CRM_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Bookings CRM"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Bookings"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Cancelled"
+          }
+        },
+        "options": {}
+      },
+      "name": "Update to Cancelled",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        176,
+        688
+      ],
+      "id": "8272021c-a830-4658-9164-bf961015e46c"
+    },
+    {
+      "parameters": {
+        "message": "=No problem! Your booking has been cancelled.\n\nBook again: YOUR_FORM_LINK\n\nHope to see you soon! 💙",
+        "options": {}
+      },
+      "name": "Send Cancellation",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        400,
+        688
+      ],
+      "id": "ca4ed133-c90e-41b1-89f8-9b44e9df76f1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "",
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "condition-reschedule",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "reschedule",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "If Reschedule",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -32,
+        992
+      ],
+      "id": "11114f0d-8b80-4ec2-a159-ccfacae04315"
+    },
+    {
+      "parameters": {
+        "message": "=No worries! Select a new time:\n\nYOUR_FORM_LINK",
+        "options": {}
+      },
+      "name": "Send Reschedule Link",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        176,
+        880
+      ],
+      "id": "bb2c23fa-4715-4bbc-b72b-0fea221201e6"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=OK",
+        "options": {}
+      },
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        848,
+        688
+      ],
+      "id": "313ac239-4004-4636-a6d4-497cfa99383a"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "id": "cc35e1db-b69d-4086-bbb0-7e2b7c5b372c",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -512,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BOOKINGS_CRM_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Bookings CRM"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Bookings"
+        },
+        "options": {}
+      },
+      "id": "b40c72ce-71d8-4c1b-9ede-6ead70fc6b49",
+      "name": "Get All Bookings",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        -288,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { DateTime } = require('luxon');\nconst now = DateTime.now().setZone('Africa/Johannesburg');\n\nconst results = {\n  reminder24h: [],\n  reminder2h: [],\n  followUp: []\n};\n\nfor (const item of $input.all()) {\n  const data = item.json;\n  \n  // Skip if not confirmed or missing appointment time\n  if (data.Status !== 'Confirmed' || !data.AppointmentDateTime) continue;\n  \n  const appointmentDT = DateTime.fromISO(data.AppointmentDateTime, { zone: 'Africa/Johannesburg' });\n  \n  if (!appointmentDT.isValid) continue;\n  \n  const hoursUntil = appointmentDT.diff(now, 'hours').hours;\n  const hoursSince = now.diff(appointmentDT, 'hours').hours;\n  \n  // 24h reminder (between 23-25h before)\n  if (hoursUntil >= 23 && hoursUntil <= 25 && data.Reminder24hSent !== 'TRUE' && data.Reminder24hSent !== true) {\n    results.reminder24h.push({\n      ...data,\n      reminderType: '24h',\n      appointmentDisplay: appointmentDT.toFormat('EEEE, dd MMMM yyyy \\\\at HH:mm'),\n      appointmentTime: appointmentDT.toFormat('HH:mm')\n    });\n  }\n  \n  // 2h reminder (between 1.5-2.5h before)\n  if (hoursUntil >= 1.5 && hoursUntil <= 2.5 && data.Reminder2hSent !== 'TRUE' && data.Reminder2hSent !== true) {\n    results.reminder2h.push({\n      ...data,\n      reminderType: '2h',\n      appointmentTime: appointmentDT.toFormat('HH:mm')\n    });\n  }\n  \n  // Follow-up (1-3 hours after appointment)\n  if (hoursSince >= 1 && hoursSince <= 3 && data.FollowUpSent !== 'TRUE' && data.FollowUpSent !== true) {\n    results.followUp.push({\n      ...data,\n      reminderType: 'followup'\n    });\n  }\n}\n\n// Combine all results\nconst allReminders = [...results.reminder24h, ...results.reminder2h, ...results.followUp];\n\nif (allReminders.length === 0) {\n  // Return empty to stop execution\n  return [];\n}\n\nreturn allReminders.map(item => ({ json: item }));"
+      },
+      "id": "5596ea3a-92bf-4c3c-b2b7-2c12d74e3f44",
+      "name": "Filter Due Reminders",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        1488
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "d4d5d6d7-e8e9-f0f1-a2a3-b4b5b6b7b8b9",
+              "leftValue": "={{ $json.reminderType }}",
+              "rightValue": "24h",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "366eb4a4-1dc3-423a-9e05-ec767a1f2e6f",
+      "name": "If 24h Reminder",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        144,
+        1376
+      ]
+    },
+    {
+      "parameters": {
+        "message": "=Hi {{ $json.Name }}! 👋\n\nReminder: You have a {{ $json.Service }} appointment tomorrow at {{ $json.appointmentDisplay }}.\n\nReply CANCEL if you can't make it.\n\nLocation: YOUR_BUSINESS_ADDRESS\n\nSee you soon! 🌟",
+        "options": {}
+      },
+      "id": "02e795eb-2fb2-462e-ae09-7d866921c7aa",
+      "name": "Send 24h Reminder",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        368,
+        1264
+      ],
+      "notes": "Replace with your business address"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BOOKINGS_CRM_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Bookings CRM"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Bookings"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Reminder24hSent": "TRUE"
+          }
+        },
+        "options": {}
+      },
+      "id": "3eca94b7-2d15-48a4-acfa-7e209eb8140e",
+      "name": "Mark 24h Sent",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        592,
+        1264
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c9c0c1c2-d3d4-e5e6-f7f8-a9a0a1a2a3a4",
+              "leftValue": "={{ $json.reminderType }}",
+              "rightValue": "2h",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d1150378-28aa-4caf-8188-11bd1d34c790",
+      "name": "If 2h Reminder",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        144,
+        1568
+      ]
+    },
+    {
+      "parameters": {
+        "message": "=Hi {{ $json.Name }}! ⏰\n\nYour {{ $json.Service }} appointment is in 2 hours at {{ $json.appointmentTime }}.\n\nWe're ready for you!\n\nLocation: YOUR_BUSINESS_ADDRESS",
+        "options": {}
+      },
+      "id": "64123978-7e04-491d-8a28-d8856ab03f38",
+      "name": "Send 2h Reminder",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        368,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BOOKINGS_CRM_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Bookings CRM"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Bookings"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Reminder2hSent": "TRUE"
+          }
+        },
+        "options": {}
+      },
+      "id": "1aee895c-8dcf-464c-9210-b10cd4c9bd00",
+      "name": "Mark 2h Sent",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        592,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "b4b5b6b7-c8c9-d0d1-e2e3-f4f5f6f7f8f9",
+              "leftValue": "={{ $json.reminderType }}",
+              "rightValue": "followup",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b602c967-9709-4ac9-a3a1-8eb24ebd7992",
+      "name": "If Follow-up",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        144,
+        1776
+      ]
+    },
+    {
+      "parameters": {
+        "message": "=Hi {{ $json.Name }}! 🌟\n\nThank you for choosing us today!\n\nWe'd love your feedback:\n⭐ YOUR_GOOGLE_REVIEW_LINK\n\nBook your next appointment:\n📅 YOUR_BOOKING_FORM_LINK\n\n{{ $json.Service }} clients get 10% off their next visit! 💙",
+        "options": {}
+      },
+      "id": "5b394cfd-5faa-4c09-bd7b-60d75ff8c9e4",
+      "name": "Send Follow-up",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        368,
+        1664
+      ],
+      "notes": "Replace YOUR_GOOGLE_REVIEW_LINK and YOUR_BOOKING_FORM_LINK with your actual links"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_BOOKINGS_CRM_SPREADSHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Bookings CRM"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Bookings"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "FollowUpSent": "TRUE"
+          }
+        },
+        "options": {}
+      },
+      "id": "6ceb4354-fee8-4b4b-a30d-312b727936ab",
+      "name": "Mark Follow-up Sent",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [
+        592,
+        1664
+      ]
+    },
+    {
+      "parameters": {
+        "content": "Workflow 4: Reminder Scheduler",
+        "height": 800,
+        "width": 1776
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -736,
+        1168
+      ],
+      "typeVersion": 1,
+      "id": "b1d935af-3e1f-42d8-9906-888f9949f083",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "Workflow 3: Whatsapp Webhook Listener",
+        "height": 736,
+        "width": 1776,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -736,
+        432
+      ],
+      "typeVersion": 1,
+      "id": "292dc5be-422d-478c-a811-d157da922742",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "Workflow 2: Booking Handler",
+        "height": 240,
+        "width": 1776,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -736,
+        176
+      ],
+      "typeVersion": 1,
+      "id": "03d34f70-73fd-498a-b0ca-94a78ea3d74d",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "Workflow 1: Calendar Sync",
+        "height": 256,
+        "width": 1776,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -736,
+        -96
+      ],
+      "typeVersion": 1,
+      "id": "88fb5977-ac9d-427d-942d-0137c332182d",
+      "name": "Sticky Note3"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every 30 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Get Calendar Free/Busy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Calendar Free/Busy": {
+      "main": [
+        [
+          {
+            "node": "Generate Available Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Available Slots": {
+      "main": [
+        [
+          {
+            "node": "Clear Old Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Old Slots": {
+      "main": [
+        [
+          {
+            "node": "Write Available Slots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Form Submitted": {
+      "main": [
+        [
+          {
+            "node": "Parse Booking Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Booking Data": {
+      "main": [
+        [
+          {
+            "node": "Log to CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to CRM": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Available Slots": {
+      "main": [
+        []
+      ]
+    },
+    "Webhook - WhatsApp Replies": {
+      "main": [
+        [
+          {
+            "node": "Parse Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Reply": {
+      "main": [
+        [
+          {
+            "node": "Find Pending Booking",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Pending Booking": {
+      "main": [
+        [
+          {
+            "node": "If Confirm",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Cancel",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Reschedule",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Confirm": {
+      "main": [
+        [
+          {
+            "node": "Create Calendar Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Calendar Event": {
+      "main": [
+        [
+          {
+            "node": "Update to Confirmed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update to Confirmed": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Cancel": {
+      "main": [
+        [
+          {
+            "node": "Update to Cancelled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update to Cancelled": {
+      "main": [
+        [
+          {
+            "node": "Send Cancellation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Cancellation": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Reschedule": {
+      "main": [
+        [
+          {
+            "node": "Send Reschedule Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reschedule Link": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every Hour": {
+      "main": [
+        [
+          {
+            "node": "Get All Bookings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All Bookings": {
+      "main": [
+        [
+          {
+            "node": "Filter Due Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Due Reminders": {
+      "main": [
+        [
+          {
+            "node": "If 24h Reminder",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If 2h Reminder",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If 24h Reminder": {
+      "main": [
+        [
+          {
+            "node": "Send 24h Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send 24h Reminder": {
+      "main": [
+        [
+          {
+            "node": "Mark 24h Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If 2h Reminder": {
+      "main": [
+        [
+          {
+            "node": "Send 2h Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send 2h Reminder": {
+      "main": [
+        [
+          {
+            "node": "Mark 2h Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Send Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Mark Follow-up Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "923f1b30-f364-4732-922e-5a21694961ad",
+  "meta": {
+    "instanceId": "682c9f7671b860f88c60106927f6e93b525aa4b8eb25cbd421c65b3e3984befe"
+  },
+  "id": "C086mTZoWB1N9sXv",
+  "tags": []
+}
