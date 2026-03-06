@@ -22,7 +22,7 @@
     },
     {
       "parameters": {
-        "url": "YOUR_URL",
+        "url": "YOUR_URL/healthz",
         "options": {
           "response": {
             "response": {
